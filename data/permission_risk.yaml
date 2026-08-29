@@ -1,0 +1,85 @@
+# Catálogo de riesgo de permisos de Microsoft Graph.
+#
+# ESTE ARCHIVO ES EL CRITERIO, Y ES EDITABLE A PROPÓSITO.
+# El nivel de riesgo de un permiso es un juicio, no un hecho absoluto: depende del
+# contexto de cada organización. Por eso vive acá, en datos, y no incrustado en el
+# código. Cambiá un nivel y el score cambia, sin tocar una línea de Python.
+#
+# NIVELES y su peso en el score (ver auditor/score.py y README):
+#   critico = 100   alto = 40   medio = 10   bajo = 2
+#   Un permiso que no esté en esta lista se trata como 'desconocido' (peso 15):
+#   un permiso que nadie clasificó es incierto, no inofensivo.
+#
+# El razonamiento de cada nivel está en el campo `porque`. La pregunta que lo decide:
+# "si esta app se ve comprometida, ¿qué alcanza el atacante con SOLO este permiso?"
+
+# ── CRÍTICOS: control del directorio o de todos los datos ────────────────────
+Application.ReadWrite.All:
+  nivel: critico
+  porque: "La app puede otorgarse a sí misma cualquier otro permiso. Es la llave que abre todas las demás."
+Directory.ReadWrite.All:
+  nivel: critico
+  porque: "Escritura sobre todo el directorio: usuarios, grupos, roles. Camino directo a persistencia."
+RoleManagement.ReadWrite.Directory:
+  nivel: critico
+  porque: "Puede asignar roles privilegiados, incluido Administrador Global."
+Mail.ReadWrite:
+  nivel: critico
+  porque: "Leer y modificar el correo de TODOS los buzones del tenant."
+Sites.FullControl.All:
+  nivel: critico
+  porque: "Control total de todo SharePoint y OneDrive de la organización."
+AppRoleAssignment.ReadWrite.All:
+  nivel: critico
+  porque: "Puede concederse asignaciones de roles de aplicación — escalada de privilegios."
+
+# ── ALTOS: lectura masiva de datos sensibles o escritura amplia ──────────────
+Mail.Read:
+  nivel: alto
+  porque: "Leer el correo de todos los buzones del tenant. Exfiltración a gran escala."
+Files.ReadWrite.All:
+  nivel: alto
+  porque: "Leer y escribir todos los archivos de todos los usuarios."
+User.ReadWrite.All:
+  nivel: alto
+  porque: "Modificar cualquier perfil de usuario del directorio."
+Group.ReadWrite.All:
+  nivel: alto
+  porque: "Modificar membresías de grupo, incluidos grupos que otorgan acceso."
+Files.Read.All:
+  nivel: alto
+  porque: "Leer todos los archivos de todos los usuarios."
+Sites.Read.All:
+  nivel: alto
+  porque: "Leer todo el contenido de SharePoint del tenant."
+Calendars.ReadWrite:
+  nivel: alto
+  porque: "Modificar los calendarios de toda la organización."
+
+# ── MEDIOS: lectura amplia de metadatos, no de contenido ─────────────────────
+User.Read.All:
+  nivel: medio
+  porque: "Leer el perfil de todos los usuarios (no su contenido). Útil para reconocimiento."
+Directory.Read.All:
+  nivel: medio
+  porque: "Leer toda la estructura del directorio. Reconocimiento del tenant."
+Group.Read.All:
+  nivel: medio
+  porque: "Leer todos los grupos y sus miembros."
+AuditLog.Read.All:
+  nivel: medio
+  porque: "Leer los registros de auditoría del tenant."
+
+# ── BAJOS: alcance del propio usuario/app ────────────────────────────────────
+User.Read:
+  nivel: bajo
+  porque: "Leer solo el perfil del usuario que inició sesión. Alcance mínimo."
+profile:
+  nivel: bajo
+  porque: "Datos básicos de perfil del propio usuario."
+openid:
+  nivel: bajo
+  porque: "Solo identidad para inicio de sesión."
+offline_access:
+  nivel: bajo
+  porque: "Token de refresco. Bajo por sí solo, relevante junto a otros."
