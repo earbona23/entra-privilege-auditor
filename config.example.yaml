@@ -1,0 +1,8 @@
+# Copiá a config.yaml (gitignored) y completá. NUNCA subas secretos.
+# Requiere un App Registration con permisos de SOLO LECTURA:
+#   Application.Read.All, Directory.Read.All, AuditLog.Read.All
+tenant_id: ""
+client_id: ""
+client_secret: ""          # mejor: exportá EPA_CLIENT_SECRET
+dias_secreto_excesivo: 180
+dias_sin_login: 90
