@@ -1,97 +1,97 @@
 # Entra Privilege Auditor
 
-Finds over-privileged and abandoned application identities in a Microsoft Entra ID
-tenant, and produces a report ranked by exposure risk. **Read-only** — it never changes
-anything in the tenant, and a test enforces that.
+**Find the over-privileged and abandoned app identities in a Microsoft Entra ID tenant —
+ranked by how much damage each one could do.**
+
+![CI](https://github.com/earbona23/entra-privilege-auditor/actions/workflows/ci.yml/badge.svg)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+![Read-only](https://img.shields.io/badge/tenant%20access-read--only-brightgreen)
+
+Read-only, always — it never changes anything in your tenant, and a test enforces that.
+
+---
 
 ## The problem
 
-Almost every Microsoft 365 tenant accumulates app registrations and service principals
-that hold Graph permissions no one remembers granting: a legacy integration with
-tenant-wide `Mail.ReadWrite`, an automation app that can assign directory roles, secrets
-that were issued once and never rotated, apps with no owner and no sign-in in a year.
-There is no consolidated view of this, and each of these is a standing path to
-compromise. This tool gives you that view.
+Almost every Microsoft 365 tenant of any age carries the same silent risk: app registrations
+and service principals holding Graph permissions nobody remembers granting. A legacy
+integration with tenant-wide `Mail.ReadWrite`. An automation app that can assign directory
+roles. A vendor connector with `Directory.ReadWrite.All`, set up once and never revisited.
+Credentials issued years ago and never rotated. Apps with no owner and no sign-in in a year.
+
+None of it shows up in a daily alert. None of it is anyone's job to review. And each one is
+a standing path to compromising the whole tenant. **This tool gives you the consolidated,
+risk-ranked view that the portal doesn't.**
 
 ## See it in 10 seconds — no tenant required
 
 ```bash
 git clone https://github.com/earbona23/entra-privilege-auditor
 cd entra-privilege-auditor
-python -m auditor.cli          # demo mode: synthetic tenant, no credentials
+python -m auditor.cli                    # demo mode: a synthetic tenant, no credentials
 ```
 
 Everything is labelled **`DEMO DATA`** — an invented tenant, so you can evaluate the tool
-before connecting anything. Try the other outputs:
+before connecting anything. Then try the HTML board you'd hand to management:
 
 ```bash
 python -m auditor.cli --formato html --salida report.html
 python -m auditor.cli --formato json --salida today.json
-python -m auditor.cli --diff yesterday.json     # report only what changed
+python -m auditor.cli --diff yesterday.json     # report only what changed since last run
 ```
 
 ![HTML report in demo mode](docs/screenshot.png)
 
-## How the risk score works
+Each app shows its exposure score, the abandonment signals against it, and — for every
+permission — *why* it carries the risk level it does.
 
-The risk level of each permission is **not hard-coded** — it lives in
-[`data/permission_risk.yaml`](data/permission_risk.yaml), an editable catalog, because
-what counts as "high risk" depends on the organization. Each entry carries the *reason*
-for its level. Levels map to weights: `critico=100, alto=40, medio=10, bajo=2`. A
-permission not in the catalog is treated as **`desconocido` (weight 15)** — what nobody
-reviewed is uncertain, not harmless.
+## What makes it more than a permission dump
 
-Per application:
+**Risk is a judgment, so it lives in data you can edit.** The risk level of each Graph
+permission is not hard-coded — it sits in [`data/permission_risk.yaml`](data/permission_risk.yaml),
+with the *reason* attached, because what counts as "critical" depends on the organization.
+A permission the catalog doesn't know is scored **`unknown` (weight 15)**, never ignored:
+what nobody reviewed is uncertain, not harmless.
+
+**The score measures capability, not count.** Fifteen low-impact scopes are less dangerous
+than one `RoleManagement.ReadWrite.Directory`, and the score reflects that:
 
 ```
 base = Σ weight(application permission) + 0.5 · Σ weight(delegated permission)
 ```
 
-Application permissions weigh double delegated ones on purpose: an application permission
-acts with no user present and usually spans the whole tenant, while a delegated one is
-bounded by what the signed-in user could already do.
+Application permissions weigh double delegated ones on purpose — they act with no user
+present and usually span the whole tenant. Abandonment signals (no owner, expired or
+never-rotated credential, stale sign-in) then apply compounding multipliers, because
+over-privilege is worse when it's also unwatched.
 
-Abandonment signals don't add privilege but raise the chance it's exploitable unnoticed,
-so they apply compounding multipliers: no owner ×1.30, expired/expiring credential ×1.20,
-no recent sign-in ×1.20, over-long secret lifetime ×1.15.
-
-The **tenant score is a sum, not an average** — deliberately. Twenty medium-risk apps are
-a bigger problem than one, and an average would hide that.
+**The tenant score is a sum, not an average** — twenty medium-risk apps are a bigger problem
+than one, and an average would hide exactly the sprawl you're hunting.
 
 ## Connecting a real tenant
 
 ```bash
 pip install -r requirements.txt
 cp config.example.yaml config.yaml
-export EPA_CLIENT_SECRET=...
+export EPA_CLIENT_SECRET=...             # the secret never goes in the repo
 python -m auditor.cli --live --formato html --salida report.html
 ```
 
-`config.yaml` is git-ignored; secrets never enter the repo.
-
-### Permissions it needs — all read-only
-
-`Application.Read.All`, `Directory.Read.All`, `AuditLog.Read.All`. The auditor looks for
-over-privilege; it would be ironic for it to request write access. If a permission is
-missing, the affected signal is skipped rather than the run failing.
-
-## Read-only, and how it's enforced
-
-The Graph client exposes only `get()` and `get_all()` — no write verbs exist.
-`tests/test_readonly_guarantee.py` walks every file under `auditor/` and fails if a Graph
-write appears anywhere (the single OAuth token request is the documented exception). Add a
-write and CI goes red before it reaches a tenant.
+**Permissions — all read-only:** `Application.Read.All`, `Directory.Read.All`,
+`AuditLog.Read.All`. The Graph client exposes only `get()`/`get_all()`; there is no write
+path, and `tests/test_readonly_guarantee.py` fails if a Graph write verb appears anywhere.
+A missing permission empties one signal rather than failing the whole run.
 
 ## Limitations
 
-- Permission risk is a judgment encoded in a data file, not an absolute. Review the
-  catalog against your own environment.
-- Abandonment signals depend on Graph reports (sign-in activity) that require the right
-  license/permission; without them, the tool does not *assume* abandonment — it stays
-  silent rather than guess.
-- Diff compares two JSON runs you produce; it does not store history itself.
-- `--live` is unit-tested with mocked Graph responses. Validate against your tenant before
-  operational use.
+- **Permission risk is a starting point, not an absolute.** Review the catalog against your
+  environment; the reasoning is published next to each level so you can.
+- **Abandonment signals depend on Graph reports and licensing.** Where a signal isn't
+  available, the tool stays silent rather than assume disuse.
+- **It finds over-privilege, not misuse.** An app *can* read all mail; whether it *does* is a
+  separate question that needs sign-in and audit-log analysis on top.
+- **`--live` is unit-tested with mocked Graph responses.** Validate against your own tenant
+  before operational use.
 
 ## Contributing
 
